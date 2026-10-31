@@ -1,9 +1,23 @@
 # UI SSO Setup — React SPA
 
+![Microsoft Entra ID](https://img.shields.io/badge/Microsoft_Entra_ID-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white)
+![MSAL](https://img.shields.io/badge/MSAL.js-0078D4?style=for-the-badge&logo=microsoft&logoColor=white)
+![OAuth 2.0 + PKCE](https://img.shields.io/badge/OAuth_2.0_%2B_PKCE-EB5424?style=for-the-badge&logo=auth0&logoColor=white)
+![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+
 React single-page app that signs users in with **Microsoft Entra ID** via
 **MSAL**, calls a protected API with the issued access token, and renders a
 **role-based** experience (policy-admin system for underwriters, administration
 for admins). It is the frontend of a three-repository SSO reference system.
+
+<p align="center">
+  <img src="docs/auth-flow.svg" alt="Animated auth flow: React SPA to Microsoft Entra ID to Node API to PostgreSQL" width="100%"/>
+</p>
+
+> The diagram above is an animated SVG (a JWT travels SPA → Entra ID → API → DB).
+> It animates on GitHub and in the VS Code Markdown preview.
 
 ## Part of a 3-repository system
 
