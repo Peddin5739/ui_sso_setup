@@ -1,75 +1,121 @@
-# React + TypeScript + Vite
+# UI SSO Setup — React SPA
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React single-page app that signs users in with **Microsoft Entra ID** via
+**MSAL**, calls a protected API with the issued access token, and renders a
+**role-based** experience (policy-admin system for underwriters, administration
+for admins). It is the frontend of a three-repository SSO reference system.
 
-Currently, two official plugins are available:
+## Part of a 3-repository system
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Layer | Repository | Description |
+| --- | --- | --- |
+| **Frontend (SPA)** | **ui_sso_setup** (this repo) | React + MSAL sign-in and role-based UI |
+| Backend (API) | [Node_sso_setup](https://github.com/Peddin5739/Node_sso_setup) | Express API, token validation, authorization |
+| Database | [DB_sso_setup-Public](https://github.com/Peddin5739/DB_sso_setup-Public) | PostgreSQL `authz` schema (groups → roles) |
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Authentication & authorization method
 
-## Expanding the ESLint configuration
+- **Protocol:** OpenID Connect (OIDC) 1.0 on top of **OAuth 2.0**.
+- **Flow:** **Authorization Code Flow with PKCE** via `@azure/msal-browser`
+  (public client, **no client secret**).
+- **Identity provider:** Microsoft Entra ID (Azure AD), authority
+  `https://login.microsoftonline.com/<tenant>/v2.0`.
+- **Token usage:** MSAL acquires a **v2 access token** for scope
+  `api://<api-client-id>/access_as_user` and sends it as
+  `Authorization: Bearer <token>` to the API.
+- **Authorization in the UI:** roles returned by `GET /api/profile` (derived
+  from the user's Entra `groups`) drive routing guards (`RequireRole`) and which
+  navigation/pages are visible.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+---
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Architecture
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+```mermaid
+flowchart TD
+    subgraph SPA["ui_sso_setup (Vite :5173)"]
+        AUTH["lib/auth.ts\nMSAL config, getAccessToken, apiFetch"]
+        APP["App.tsx\nMSAL init + RequireRole guards"]
+        LAYOUT["components/Layout.tsx\nrole-aware sidebar"]
+        PAGES["pages/*\nLogin, Landing, AdminMappings, policy/*"]
+        STORE["lib/policyStore.ts\nlocal quotes + premium calc"]
+        APP --> LAYOUT --> PAGES
+        PAGES --> AUTH
+        PAGES --> STORE
+    end
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+    AUTH -->|"login / acquireToken (PKCE)"| AAD["Microsoft Entra ID\nv2.0 authority"]
+    AUTH -->|"Bearer v2 token"| API["Node_sso_setup API\n/api/profile, /api/admin/*"]
+    API -->|"roles, data"| PAGES
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+### Route map & guards
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```mermaid
+flowchart TD
+    Root["/"] --> Signed{"Signed in?"}
+    Signed -- No --> Login["/login (SSO button)"]
+    Signed -- Yes --> Layout["Layout (Outlet)"]
+    Layout --> Home["/home — role-based landing"]
+    Layout --> Policy["/policy (user, admin)"]
+    Policy --> Quote["/policy/quote — create quote"]
+    Policy --> Bind["/policy/bind — bind/issue policy"]
+    Layout --> Admin["/admin/mappings (admin only)"]
+    Policy -. RequireRole[user,admin] .-> Deny["Access Denied"]
+    Admin -. RequireRole[admin] .-> Deny
 ```
+
+---
+
+## Configuration
+
+Copy `.env.example` → `.env`:
+
+```env
+VITE_AZURE_TENANT_ID=<tenant-id>
+VITE_AZURE_CLIENT_ID=<spa-app-client-id>
+VITE_AZURE_AUTHORITY=https://login.microsoftonline.com/<tenant-id>/v2.0
+VITE_API_SCOPE=api://<api-app-client-id>/access_as_user
+VITE_API_BASE_URL=http://localhost:3001
+```
+
+> The **SPA app registration** must use platform *Single-page application* with
+> redirect URI `http://localhost:5173` and delegated permission to the API's
+> `access_as_user` scope (admin-consented).
+
+---
+
+## Run
+
+```bash
+npm install
+npm run dev       # http://localhost:5173
+npm run build     # tsc -b && vite build
+npm run preview   # serve production build
+```
+
+Start the [API](https://github.com/Peddin5739/Node_sso_setup) on `:3001` and
+apply the [database schema](https://github.com/Peddin5739/DB_sso_setup-Public)
+first.
+
+---
+
+## Source map
+
+| Path | Responsibility |
+| --- | --- |
+| `src/lib/auth.ts` | MSAL config, `getAccessToken`, `apiFetch` helper |
+| `src/lib/types.ts` | Shared types (`Profile`, `Role`, `GroupRoleMapping`, `Quote`) |
+| `src/lib/policyStore.ts` | localStorage quotes/policies + premium calc |
+| `src/App.tsx` | MSAL init, routing, `RequireRole` guards |
+| `src/components/Layout.tsx` | Role-aware sidebar shell |
+| `src/pages/AdminMappings.tsx` | Admin group → role mapping UI |
+| `src/pages/policy/*` | Policy home, create quote, bind/issue |
+
+---
+
+## Tech stack
+
+React 19 · Vite 8 · TypeScript 7 · React Router 7 · `@azure/msal-browser` 4.
